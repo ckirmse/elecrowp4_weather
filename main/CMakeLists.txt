@@ -7,7 +7,9 @@ idf_component_register(
         acurite.cc
         weather_display.cc
         ntp_sync.cc
-        lv_font_sourcesansprobold80.c
+        lv_font_sourcesanspro_bold300.c
+        lv_font_sourcesanspro_regular24.c
+        lv_font_sourcesanspro_regular16.c
     INCLUDE_DIRS
         "."
     REQUIRES

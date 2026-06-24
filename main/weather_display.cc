@@ -7,9 +7,9 @@
 
 static const char * TAG = "WeatherDisplay";
 
-// The big-number font only has '0'-'9' and ':'. Units and labels use
-// Montserrat (enabled via sdkconfig CONFIG_LV_FONT_MONTSERRAT_24=y).
-LV_FONT_DECLARE(lv_font_sourcesansprobold80);
+LV_FONT_DECLARE(lv_font_sourcesanspro_bold300);
+LV_FONT_DECLARE(lv_font_sourcesanspro_regular24);
+LV_FONT_DECLARE(lv_font_sourcesanspro_regular16);
 
 #define COLOR_BG      lv_color_hex(0x1A1A2E)
 #define COLOR_PANEL   lv_color_hex(0x16213E)
@@ -46,15 +46,15 @@ void WeatherDisplay::init(Display & display) {
     lv_style_set_pad_all(&m_style_dark_bg, 0);
 
     lv_style_init(&m_style_big);
-    lv_style_set_text_font(&m_style_big, &lv_font_sourcesansprobold80);
+    lv_style_set_text_font(&m_style_big, &lv_font_sourcesanspro_bold300);
     lv_style_set_text_color(&m_style_big, COLOR_TEMP);
 
     lv_style_init(&m_style_medium);
-    lv_style_set_text_font(&m_style_medium, &lv_font_montserrat_24);
+    lv_style_set_text_font(&m_style_medium, &lv_font_sourcesanspro_regular24);
     lv_style_set_text_color(&m_style_medium, COLOR_TEXT);
 
     lv_style_init(&m_style_small);
-    lv_style_set_text_font(&m_style_small, &lv_font_montserrat_16);
+    lv_style_set_text_font(&m_style_small, &lv_font_sourcesanspro_regular16);
     lv_style_set_text_color(&m_style_small, COLOR_MUTED);
 
     // ── Startup screen (shown during WiFi/NTP init) ──────────────────────────
@@ -87,8 +87,8 @@ void WeatherDisplay::init(Display & display) {
 
     // ── Temperature panel (left half) ────────────────────────────────────────
     lv_obj_t * temp_panel = lv_obj_create(m_screen);
-    lv_obj_set_size(temp_panel, 480, 400);
-    lv_obj_align(temp_panel, LV_ALIGN_LEFT_MID, 32, 20);
+    lv_obj_set_size(temp_panel, 480, 500);
+    lv_obj_align(temp_panel, LV_ALIGN_LEFT_MID, 32, 10);
     lv_obj_set_style_bg_color(temp_panel, COLOR_PANEL, 0);
     lv_obj_set_style_border_color(temp_panel, COLOR_ACCENT, 0);
     lv_obj_set_style_border_width(temp_panel, 2, 0);
@@ -101,28 +101,27 @@ void WeatherDisplay::init(Display & display) {
     lv_obj_set_style_text_color(temp_title, COLOR_MUTED, 0);
     lv_obj_align(temp_title, LV_ALIGN_TOP_MID, 0, 20);
 
-    // Big number for integer °F — only digits, so lv_font_sourcesansprobold80 covers it.
     m_temp_int_label = lv_label_create(temp_panel);
     lv_label_set_text(m_temp_int_label, "--");
     lv_obj_add_style(m_temp_int_label, &m_style_big, 0);
-    lv_obj_align(m_temp_int_label, LV_ALIGN_CENTER, -30, -20);
+    lv_obj_align(m_temp_int_label, LV_ALIGN_CENTER, 0, 0);
 
     m_temp_unit_label = lv_label_create(temp_panel);
     lv_label_set_text(m_temp_unit_label, "\xC2\xB0""F");  // °F in UTF-8
     lv_obj_add_style(m_temp_unit_label, &m_style_medium, 0);
     lv_obj_set_style_text_color(m_temp_unit_label, COLOR_TEMP, 0);
-    lv_obj_align(m_temp_unit_label, LV_ALIGN_CENTER, 60, -20);
+    lv_obj_align(m_temp_unit_label, LV_ALIGN_CENTER, 160, -120);
 
     m_temp_c_label = lv_label_create(temp_panel);
     lv_label_set_text(m_temp_c_label, "-- \xC2\xB0""C");
     lv_obj_add_style(m_temp_c_label, &m_style_medium, 0);
     lv_obj_set_style_text_color(m_temp_c_label, COLOR_MUTED, 0);
-    lv_obj_align(m_temp_c_label, LV_ALIGN_CENTER, 0, 60);
+    lv_obj_align(m_temp_c_label, LV_ALIGN_BOTTOM_MID, 0, -16);
 
     // ── Humidity panel (right half) ──────────────────────────────────────────
     lv_obj_t * hum_panel = lv_obj_create(m_screen);
-    lv_obj_set_size(hum_panel, 440, 400);
-    lv_obj_align(hum_panel, LV_ALIGN_RIGHT_MID, -32, 20);
+    lv_obj_set_size(hum_panel, 440, 500);
+    lv_obj_align(hum_panel, LV_ALIGN_RIGHT_MID, -32, 10);
     lv_obj_set_style_bg_color(hum_panel, COLOR_PANEL, 0);
     lv_obj_set_style_border_color(hum_panel, COLOR_ACCENT, 0);
     lv_obj_set_style_border_width(hum_panel, 2, 0);
@@ -139,13 +138,13 @@ void WeatherDisplay::init(Display & display) {
     lv_label_set_text(m_humidity_val_label, "--");
     lv_obj_add_style(m_humidity_val_label, &m_style_big, 0);
     lv_obj_set_style_text_color(m_humidity_val_label, COLOR_HUMID, 0);
-    lv_obj_align(m_humidity_val_label, LV_ALIGN_CENTER, -20, -20);
+    lv_obj_align(m_humidity_val_label, LV_ALIGN_CENTER, 0, 0);
 
     m_humidity_unit_label = lv_label_create(hum_panel);
     lv_label_set_text(m_humidity_unit_label, "%");
     lv_obj_add_style(m_humidity_unit_label, &m_style_medium, 0);
     lv_obj_set_style_text_color(m_humidity_unit_label, COLOR_HUMID, 0);
-    lv_obj_align(m_humidity_unit_label, LV_ALIGN_CENTER, 50, -20);
+    lv_obj_align(m_humidity_unit_label, LV_ALIGN_CENTER, 140, -120);
 
     // ── Status bar ────────────────────────────────────────────────────────────
     m_status_label = lv_label_create(m_screen);
@@ -172,9 +171,6 @@ void WeatherDisplay::showMainScreen() {
 void WeatherDisplay::update(const AcuriteReading & r, int rssi_dbm) {
     char buf[64];
 
-    // Integer °F value — only digits, safe for lv_font_sourcesansprobold80.
-    // For negative temps, the minus sign will render as unknown glyph (tofu);
-    // that's acceptable for the initial version.
     snprintf(buf, sizeof(buf), "%d", (int)r.temp_f);
     lv_label_set_text(m_temp_int_label, buf);
 

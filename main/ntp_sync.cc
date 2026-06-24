@@ -58,6 +58,7 @@ void ntpSyncTime(NtpStatusCb cb) {
     if (strlen(CONFIG_WIFI_SSID) == 0) {
         lprintf(TAG, "No SSID configured — skipping NTP sync");
         if (s_status_cb) s_status_cb("No WiFi configured");
+        vTaskDelay(pdMS_TO_TICKS(10000));
         return;
     }
 
