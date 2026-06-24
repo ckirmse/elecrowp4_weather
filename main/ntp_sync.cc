@@ -26,17 +26,23 @@ static NtpStatusCb s_status_cb;
 static void on_event(void * arg, esp_event_base_t base, int32_t id, void * data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         lprintf(TAG, "WiFi STA started, connecting...");
-        if (s_status_cb) s_status_cb("Connecting to WiFi...");
+        if (s_status_cb) {
+            s_status_cb("Connecting to WiFi...");
+        }
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t * e = (wifi_event_sta_disconnected_t *)data;
         if (s_retries < MAX_RETRIES) {
             lprintf(TAG, "Disconnected (reason %d), retry %d/%d", e->reason, ++s_retries, MAX_RETRIES);
-            if (s_status_cb) s_status_cb("Retrying WiFi...");
+            if (s_status_cb) {
+                s_status_cb("Retrying WiFi...");
+            }
             esp_wifi_connect();
         } else {
             eprintf(TAG, "Disconnected (reason %d), max retries reached", e->reason);
-            if (s_status_cb) s_status_cb("WiFi connection failed");
+            if (s_status_cb) {
+                s_status_cb("WiFi connection failed");
+            }
             xEventGroupSetBits(s_wifi_events, FAILED_BIT);
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -57,7 +63,9 @@ void ntpSyncTime(NtpStatusCb cb) {
 
     if (strlen(CONFIG_WIFI_SSID) == 0) {
         lprintf(TAG, "No SSID configured — skipping NTP sync");
-        if (s_status_cb) s_status_cb("No WiFi configured");
+        if (s_status_cb) {
+            s_status_cb("No WiFi configured");
+        }
         vTaskDelay(pdMS_TO_TICKS(10000));
         return;
     }
@@ -105,13 +113,17 @@ void ntpSyncTime(NtpStatusCb cb) {
     }
     if (!(bits & CONNECTED_BIT)) {
         eprintf(TAG, "WiFi connection timed out (15s) — time will not be set");
-        if (s_status_cb) s_status_cb("WiFi timed out");
+        if (s_status_cb) {
+            s_status_cb("WiFi timed out");
+        }
         goto cleanup_wifi;
     }
 
     {
         lprintf(TAG, "Connected; starting SNTP sync...");
-        if (s_status_cb) s_status_cb("Getting time...");
+        if (s_status_cb) {
+            s_status_cb("Getting time...");
+        }
         esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
         ESP_ERROR_CHECK(esp_netif_sntp_init(&sntp_cfg));
 
@@ -123,10 +135,14 @@ void ntpSyncTime(NtpStatusCb cb) {
             lprintf(TAG, "Synced: %04d-%02d-%02d %02d:%02d:%02d UTC",
                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                 t.tm_hour, t.tm_min, t.tm_sec);
-            if (s_status_cb) s_status_cb("Time synced");
+            if (s_status_cb) {
+                s_status_cb("Time synced");
+            }
         } else {
             eprintf(TAG, "SNTP sync timed out");
-            if (s_status_cb) s_status_cb("Time sync failed");
+            if (s_status_cb) {
+                s_status_cb("Time sync failed");
+            }
         }
 
         esp_netif_sntp_deinit();
