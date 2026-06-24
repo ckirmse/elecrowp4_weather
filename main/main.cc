@@ -192,6 +192,8 @@ static void run_task(void * arg) {
                 edges_this_sec, edges_total, packets_total, since_last_edge_ms);
             edges_this_sec = 0;
             last_stats_us  = now;
+
+            weather_display.checkStaleness();
         }
 
         lv_timer_handler();

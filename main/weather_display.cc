@@ -19,6 +19,9 @@ LV_FONT_DECLARE(lv_font_sourcesanspro_regular16);
 #define COLOR_HUMID   lv_color_hex(0x53D8FB)
 #define COLOR_TEXT    lv_color_hex(0xE0E0E0)
 #define COLOR_MUTED   lv_color_hex(0x888888)
+#define COLOR_STALE_BG lv_color_hex(0xCC0000)
+
+static constexpr time_t STALE_THRESHOLD_S = 600;  // 10 minutes
 
 WeatherDisplay::WeatherDisplay():
     m_startup_screen(nullptr),
@@ -156,6 +159,9 @@ void WeatherDisplay::init(Display & display) {
     m_update_label = lv_label_create(m_screen);
     lv_label_set_text(m_update_label, "");
     lv_obj_add_style(m_update_label, &m_style_small, 0);
+    lv_obj_set_style_pad_hor(m_update_label, 8, 0);
+    lv_obj_set_style_pad_ver(m_update_label, 4, 0);
+    lv_obj_set_style_radius(m_update_label, 4, 0);
     lv_obj_align(m_update_label, LV_ALIGN_BOTTOM_RIGHT, -16, -16);
 
     lprintf(TAG, "Weather UI ready");
@@ -193,6 +199,28 @@ void WeatherDisplay::update(const AcuriteReading & r, int rssi_dbm) {
     snprintf(buf, sizeof(buf), "data as of %d:%02d%s",
         hour, tm_local.tm_min, tm_local.tm_hour < 12 ? "am" : "pm");
     lv_label_set_text(m_update_label, buf);
+
+    m_last_reading_time = now;
+    checkStaleness();
+}
+
+void WeatherDisplay::checkStaleness() {
+    if (m_last_reading_time == 0) {
+        return;
+    }
+    bool stale = (time(nullptr) - m_last_reading_time) > STALE_THRESHOLD_S;
+    if (stale == m_is_stale) {
+        return;
+    }
+    m_is_stale = stale;
+    if (stale) {
+        lv_obj_set_style_text_color(m_update_label, lv_color_white(), 0);
+        lv_obj_set_style_bg_color(m_update_label, COLOR_STALE_BG, 0);
+        lv_obj_set_style_bg_opa(m_update_label, LV_OPA_COVER, 0);
+    } else {
+        lv_obj_set_style_text_color(m_update_label, COLOR_MUTED, 0);
+        lv_obj_set_style_bg_opa(m_update_label, LV_OPA_TRANSP, 0);
+    }
 }
 
 void WeatherDisplay::showWaiting() {

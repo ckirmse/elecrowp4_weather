@@ -1,5 +1,7 @@
 #pragma once
 
+#include <time.h>
+
 #include "lvgl.h"
 #include "acurite.h"
 #include "display.h"
@@ -14,6 +16,7 @@ public:
     void showStartupStatus(const char * msg);
     void showMainScreen();
     void showWaiting();
+    void checkStaleness();
 
 private:
     lv_obj_t * m_startup_screen;
@@ -26,6 +29,9 @@ private:
     lv_obj_t * m_humidity_unit_label;
     lv_obj_t * m_status_label;
     lv_obj_t * m_update_label;
+
+    time_t m_last_reading_time = 0;
+    bool   m_is_stale = false;
 
     lv_style_t m_style_big;
     lv_style_t m_style_medium;
