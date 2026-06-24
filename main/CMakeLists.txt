@@ -1,0 +1,28 @@
+idf_component_register(
+    SRCS
+        main.cc
+        display.cc
+        cc1101.cc
+        signal_capture.cc
+        acurite.cc
+        weather_display.cc
+        ntp_sync.cc
+        lv_font_sourcesansprobold80.c
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_timer
+        esp_lcd
+        esp_hw_support
+        esp_driver_spi
+        esp_driver_gpio
+        esp_driver_ledc
+        esp_driver_i2c
+        freertos
+        lvgl
+        esp_wifi
+        esp_netif
+        nvs_flash
+)
+
+target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE=1)
