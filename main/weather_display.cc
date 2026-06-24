@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -171,7 +172,7 @@ void WeatherDisplay::showMainScreen() {
 void WeatherDisplay::update(const AcuriteReading & r, int rssi_dbm) {
     char buf[64];
 
-    snprintf(buf, sizeof(buf), "%d", (int)r.temp_f);
+    snprintf(buf, sizeof(buf), "%d", (int)roundf(r.temp_f));
     lv_label_set_text(m_temp_int_label, buf);
 
     snprintf(buf, sizeof(buf), "%.1f \xC2\xB0""C", r.temp_c);
