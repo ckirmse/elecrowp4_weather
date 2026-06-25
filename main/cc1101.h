@@ -28,6 +28,7 @@ public:
     void init();
     void startRx();
     int readRssi();
+    bool isDetected() const { return m_detected; }
 
     uint8_t readReg(uint8_t addr);
     void writeReg(uint8_t addr, uint8_t value);
@@ -35,6 +36,7 @@ public:
 
 private:
     spi_device_handle_t m_spi;
+    bool m_detected = false;
 
     void assertCs();
     void deassertCs();

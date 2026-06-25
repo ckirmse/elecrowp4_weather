@@ -229,3 +229,10 @@ void WeatherDisplay::showWaiting() {
     lv_label_set_text(m_humidity_val_label, "--");
     lv_label_set_text(m_status_label, "Waiting for sensor...");
 }
+
+void WeatherDisplay::showRadioError(const char * msg) {
+    lv_obj_set_style_bg_color(m_status_label, COLOR_STALE_BG, 0);
+    lv_obj_set_style_bg_opa(m_status_label, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(m_status_label, lv_color_white(), 0);
+    lv_label_set_text(m_status_label, msg);
+}

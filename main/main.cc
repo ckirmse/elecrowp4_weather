@@ -98,6 +98,13 @@ static void run_task(void * arg) {
 
     weather_display.showMainScreen();
     weather_display.showWaiting();
+    // Advance LVGL past its refresh period (default ~33 ms) so the refresh
+    // task fires immediately and the main screen is actually rendered before
+    // hardware init begins.  The startup timer stopped driving ticks at NTP
+    // completion, so without this the first lv_timer_handler in the main loop
+    // sees 0 elapsed ticks and the refresh task doesn't run.
+    lv_tick_inc(50);
+    lv_timer_handler();
 
     Cc1101 radio;
     radio.init();
@@ -108,6 +115,12 @@ static void run_task(void * arg) {
         (int)CC1101_PIN_GDO0, gpio_get_level(CC1101_PIN_GDO0));
 
     radio.startRx();
+
+    if (!radio.isDetected()) {
+        weather_display.showRadioError("CC1101 SPI error - check wiring");
+        lv_tick_inc(50);
+        lv_timer_handler();
+    }
 
     AcuriteDecoder decoder;
 

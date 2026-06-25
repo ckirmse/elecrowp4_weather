@@ -103,6 +103,11 @@ void Cc1101::startRx() {
     // MARCSTATE is a status register — must use burst (addr|0xC0) access.
     uint8_t marcstate = readReg(CC1101_REG_MARCSTATE | 0xC0);
 
+    // Register readback is the authoritative SPI health check — some clone chips
+    // return 0x00 for VERSION but still work, so we rely on whether our writes
+    // to PKTCTRL0 and FREQ2 actually landed.
+    m_detected = (pktctrl0 == 0x32) && (freq2 == 0x10);
+
     lprintf(TAG, "PKTCTRL0=0x%02X(want 0x32)  IOCFG0=0x%02X(want 0x0D)  "
                  "FREQ2=0x%02X(want 0x10)  MDMCFG2=0x%02X(want 0x30)",
         pktctrl0, iocfg0, freq2, mdmcfg2);

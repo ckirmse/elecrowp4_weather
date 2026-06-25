@@ -16,6 +16,7 @@ public:
     void showStartupStatus(const char * msg);
     void showMainScreen();
     void showWaiting();
+    void showRadioError(const char * msg);
     void checkStaleness();
 
 private:
