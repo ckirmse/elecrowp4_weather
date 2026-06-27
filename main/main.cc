@@ -22,7 +22,7 @@
 
 static const char * TAG = "Main";
 
-// ─── Logging helpers (CIC style) ────────────────────────────────────────────
+// ─── Logging helpers -----------------────────────────────────────────────────
 
 void lprintf(const char * tag, const char * fmt, ...) {
     va_list args;
@@ -46,6 +46,7 @@ void eprintf(const char * tag, const char * fmt, ...) {
     va_end(args);
 }
 
+/*
 // ─── I2C bus scan ───────────────────────────────────────────────────────────
 
 // Update these if the board's I2C pins differ.
@@ -80,6 +81,7 @@ static void scanI2c() {
 
     ESP_ERROR_CHECK(i2c_del_master_bus(bus));
 }
+*/
 
 // ─── Startup LVGL timer (drives rendering while NTP blocks run_task) ─────────
 
@@ -191,7 +193,6 @@ static void run_task(void * arg) {
     uint32_t edges_this_sec = 0;
     uint32_t edges_total = 0;
     uint32_t packets_total = 0;
-    int64_t last_edge_us = 0;
 
     // Burst pulse-width capture: on the leading edge of each new burst, log
     // the first BURST_LOG pulses so we can tune the decoder thresholds.
@@ -214,8 +215,6 @@ static void run_task(void * arg) {
         while (capture.tryGetEvent(&ev)) {
             edges_this_sec++;
             edges_total++;
-            last_edge_us = ev.timestamp_us;
-
             // Detect burst start: gap of >50 ms since the last edge.
             if (burst_prev_edge_us > 0) {
                 int64_t gap_us = ev.timestamp_us - burst_prev_edge_us;
@@ -268,11 +267,17 @@ static void run_task(void * arg) {
         }
 
         if (now - last_bme_us >= 10'000'000) {
-            Bme680Reading r;
-            if (bme680.read(&r)) {
-                float temp_f = r.temp_c * 9.0f / 5.0f + 32.0f;
-                lprintf(TAG, "BME680 | Temp: %.1f F / %.1f C  Humidity: %.1f%%  Gas: %.0f ohm",
-                    temp_f, r.temp_c, r.humidity_pct, r.gas_resistance_ohm);
+            if (!bme680.isInitialized()) {
+                lprintf(TAG, "BME680 not initialized, retrying...");
+                bme680.init();
+            }
+            if (bme680.isInitialized()) {
+                Bme680Reading r;
+                if (bme680.read(&r)) {
+                    float temp_f = r.temp_c * 9.0f / 5.0f + 32.0f;
+                    lprintf(TAG, "BME680 | Temp: %.1f F / %.1f C  Humidity: %.1f%%  Pressure: %.1f hPa  Gas: %.0f ohm",
+                        temp_f, r.temp_c, r.humidity_pct, r.pressure_hpa, r.gas_resistance_ohm);
+                }
             }
             last_bme_us = now;
         }

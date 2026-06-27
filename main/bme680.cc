@@ -51,6 +51,19 @@ Bme680::Bme680() :
 }
 
 void Bme680::init() {
+    if (m_initialized) {
+        return;
+    }
+
+    if (m_dev) {
+        i2c_master_bus_rm_device(m_dev);
+        m_dev = nullptr;
+    }
+    if (m_bus) {
+        i2c_del_master_bus(m_bus);
+        m_bus = nullptr;
+    }
+
     i2c_master_bus_config_t bus_cfg = {};
     bus_cfg.i2c_port = I2C_NUM_0;
     bus_cfg.sda_io_num = BME680_SDA_PIN;
@@ -58,13 +71,19 @@ void Bme680::init() {
     bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
     bus_cfg.glitch_ignore_cnt = 7;
     bus_cfg.flags.enable_internal_pullup = true;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &m_bus));
+    if (i2c_new_master_bus(&bus_cfg, &m_bus) != ESP_OK) {
+        eprintf(TAG, "i2c_new_master_bus failed");
+        return;
+    }
 
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address = BME680_I2C_ADDR;
     dev_cfg.scl_speed_hz = 400000;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(m_bus, &dev_cfg, &m_dev));
+    if (i2c_master_bus_add_device(m_bus, &dev_cfg, &m_dev) != ESP_OK) {
+        eprintf(TAG, "i2c_master_bus_add_device failed");
+        return;
+    }
 
     m_sensor.intf     = BME68X_I2C_INTF;
     m_sensor.intf_ptr = &m_dev;
@@ -91,9 +110,9 @@ void Bme680::init() {
     }
 
     struct bme68x_heatr_conf heatr_cfg = {};
-    heatr_cfg.enable    = BME68X_ENABLE;
+    heatr_cfg.enable = BME68X_ENABLE;
     heatr_cfg.heatr_temp = 300;   // degrees C
-    heatr_cfg.heatr_dur  = 100;   // milliseconds
+    heatr_cfg.heatr_dur = 100;    // milliseconds
     rslt = bme68x_set_heatr_conf(BME68X_FORCED_MODE, &heatr_cfg, &m_sensor);
     if (rslt != BME68X_OK) {
         eprintf(TAG, "bme68x_set_heatr_conf failed: %d", rslt);
@@ -125,9 +144,9 @@ bool Bme680::read(Bme680Reading * out) {
         return false;
     }
 
-    out->temp_c             = data.temperature;
-    out->humidity_pct       = data.humidity;
-    out->pressure_hpa       = data.pressure / 100.0f;
+    out->temp_c = data.temperature;
+    out->humidity_pct = data.humidity;
+    out->pressure_hpa = data.pressure / 100.0f;
     out->gas_resistance_ohm = data.gas_resistance;
     return true;
 }

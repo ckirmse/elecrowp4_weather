@@ -5,18 +5,18 @@
 
 // ─── CC1101 SPI pin assignments ─────────────────────────────────────────────
 // CC1101 → ESP32-P4 wiring (Elecrow CrowPanel Advanced P4 header pins):
-//   CC1101 SCK  → IO2   (CC1101_PIN_CLK)
+//   CC1101 SCK  → IO5   (CC1101_PIN_CLK)
 //   CC1101 MOSI → IO3   (CC1101_PIN_MOSI)
 //   CC1101 MISO → IO4   (CC1101_PIN_MISO)  ← also the CHIP_RDY/SO signal
-//   CC1101 CSN  → IO5   (CC1101_PIN_CS)
+//   CC1101 CSN  → IO2   (CC1101_PIN_CS)
 //   CC1101 GDO0 → IO25  (CC1101_PIN_GDO0)  ← raw OOK demodulated output
 //   CC1101 GDO2 → NC    (not used)
 //   CC1101 VCC  → 3.3V
 //   CC1101 GND  → GND
-static constexpr gpio_num_t CC1101_PIN_CLK = GPIO_NUM_2;
+static constexpr gpio_num_t CC1101_PIN_CLK = GPIO_NUM_5;
 static constexpr gpio_num_t CC1101_PIN_MOSI = GPIO_NUM_3;
 static constexpr gpio_num_t CC1101_PIN_MISO = GPIO_NUM_4;   // also GDO1 / SO
-static constexpr gpio_num_t CC1101_PIN_CS = GPIO_NUM_5;
+static constexpr gpio_num_t CC1101_PIN_CS = GPIO_NUM_2;
 static constexpr gpio_num_t CC1101_PIN_GDO0 = GPIO_NUM_25;  // async serial data out
 // ────────────────────────────────────────────────────────────────────────────
 
