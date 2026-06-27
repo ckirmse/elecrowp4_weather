@@ -1,4 +1,6 @@
 dependencies:
+  francisduvivier/bme68x_sensorapi_espidf:
+    version: "^0.0.6"
   espressif/esp_lcd_ek79007:
     version: "^2"
   lvgl/lvgl:

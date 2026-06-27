@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         main.cc
+        bme680.cc
         display.cc
         cc1101.cc
         signal_capture.cc

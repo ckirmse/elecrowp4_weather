@@ -79,6 +79,20 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.6.1
+  espressif/i2c_bus:
+    component_hash: 483112c1619c54c38d0b734fb25f1678733267858a77b7af2f48cc7db6dbbd84
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.5.2
   espressif/wifi_remote_over_eppp:
     component_hash: 06d8bc15348bbd21f1390daace36ed5adcf6026c93c5b69decc55fa04df2711a
     dependencies:
@@ -93,6 +107,24 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 0.3.2
+  francisduvivier/bme68x_sensorapi_espidf:
+    component_hash: b460c86c9c12643ac9456716da522926532c12165d957bc28605ebd5459bab6a
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: espressif/i2c_bus
+      registry_url: https://components.espressif.com
+      require: private
+      version: 1.*
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.0.6
   idf:
     source:
       type: idf
@@ -108,7 +140,8 @@ direct_dependencies:
 - espressif/esp_hosted
 - espressif/esp_lcd_ek79007
 - espressif/esp_wifi_remote
+- francisduvivier/bme68x_sensorapi_espidf
 - lvgl/lvgl
-manifest_hash: 7f2ceafd386743d2c0228b3089e6db52345e6a829781e1a121bd8debbf8fac04
+manifest_hash: 64396c6c1740b4fc266d932fb2bd9101fcc9f26c0b8d14bfe39d0dfd4b63cc58
 target: esp32p4
 version: 3.0.0

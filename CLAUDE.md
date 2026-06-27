@@ -124,3 +124,5 @@ Follows the conventions of the `~/cic` project:
 - `memset` to zero-init structs before filling fields
 - `#pragma once` header guards
 - No docstring blocks; comments only for non-obvious WHY
+- Always brace `if`/`for`/`while` bodies — never on the same line as the keyword, never without braces
+- Time-unit suffixes: use `_SEC` for seconds, `_MS` for milliseconds, `_US` for microseconds

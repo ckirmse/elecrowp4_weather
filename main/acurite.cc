@@ -30,8 +30,8 @@ bool AcuriteDecoder::tryDecode(AcuriteReading * reading) {
         return decodeBytes(reading);
     }
     if (m_state != State::IDLE) {
-        lprintf(TAG, "RESET from %s after %d bits",
-            m_state == State::PREAMBLE ? "PREAMBLE" : "DATA", m_bit_count);
+        // lprintf(TAG, "RESET from %s after %d bits",
+        //     m_state == State::PREAMBLE ? "PREAMBLE" : "DATA", m_bit_count);
     }
     return false;
 }
@@ -83,9 +83,9 @@ bool AcuriteDecoder::processEvent(const PulseEvent & ev, AcuriteReading * readin
             int64_t avg = m_preamble_sum_us / m_preamble_count;
             m_data_threshold_us = avg * PREAMBLE_DATA_THRESHOLD_PCT / 100;
 
-            lprintf(TAG,
-                "PREAMBLE->DATA: preamble_avg=%lld us  data_threshold=%lld  first_bit=%lld us",
-                avg, m_data_threshold_us, pulse_us);
+            // lprintf(TAG,
+            //     "PREAMBLE->DATA: preamble_avg=%lld us  data_threshold=%lld  first_bit=%lld us",
+            //     avg, m_data_threshold_us, pulse_us);
 
             m_state = State::DATA;
             m_bit_count = 0;
@@ -140,9 +140,9 @@ bool AcuriteDecoder::decodeBytes(AcuriteReading * reading) {
         checksum += m_bytes[i];
     }
 
-    lprintf(TAG, "decode: [%02X %02X %02X %02X %02X %02X %02X] calc=%02X",
-        m_bytes[0], m_bytes[1], m_bytes[2], m_bytes[3],
-        m_bytes[4], m_bytes[5], m_bytes[6], checksum);
+    // lprintf(TAG, "decode: [%02X %02X %02X %02X %02X %02X %02X] calc=%02X",
+    //     m_bytes[0], m_bytes[1], m_bytes[2], m_bytes[3],
+    //     m_bytes[4], m_bytes[5], m_bytes[6], checksum);
 
     if (checksum != m_bytes[6]) {
         lprintf(TAG, "checksum FAIL (calc 0x%02X != stored 0x%02X)", checksum, m_bytes[6]);

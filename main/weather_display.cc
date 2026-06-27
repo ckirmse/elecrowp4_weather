@@ -21,7 +21,7 @@ LV_FONT_DECLARE(lv_font_sourcesanspro_regular16);
 #define COLOR_MUTED   lv_color_hex(0x888888)
 #define COLOR_STALE_BG lv_color_hex(0xCC0000)
 
-static constexpr time_t STALE_THRESHOLD_S = 600;  // 10 minutes
+static constexpr time_t STALE_THRESHOLD_SEC = 180;  // 3 minutes
 
 WeatherDisplay::WeatherDisplay():
     m_startup_screen(nullptr),
@@ -191,16 +191,7 @@ void WeatherDisplay::update(const AcuriteReading & r, int rssi_dbm) {
         r.sensor_id, r.channel, r.battery_ok ? "OK" : "LOW", rssi_dbm);
     lv_label_set_text(m_status_label, buf);
 
-    time_t now = time(nullptr);
-    struct tm tm_local;
-    localtime_r(&now, &tm_local);
-    int hour = tm_local.tm_hour % 12;
-    if (hour == 0) hour = 12;
-    snprintf(buf, sizeof(buf), "data as of %d:%02d%s",
-        hour, tm_local.tm_min, tm_local.tm_hour < 12 ? "am" : "pm");
-    lv_label_set_text(m_update_label, buf);
-
-    m_last_reading_time = now;
+    m_last_reading_time = time(nullptr);
     checkStaleness();
 }
 
@@ -208,16 +199,27 @@ void WeatherDisplay::checkStaleness() {
     if (m_last_reading_time == 0) {
         return;
     }
-    bool stale = (time(nullptr) - m_last_reading_time) > STALE_THRESHOLD_S;
+    bool stale = (time(nullptr) - m_last_reading_time) > STALE_THRESHOLD_SEC;
     if (stale == m_is_stale) {
         return;
     }
     m_is_stale = stale;
     if (stale) {
+        struct tm tm_local;
+        localtime_r(&m_last_reading_time, &tm_local);
+        int hour = tm_local.tm_hour % 12;
+        if (hour == 0) {
+            hour = 12;
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "as of %d:%02d%s",
+            hour, tm_local.tm_min, tm_local.tm_hour < 12 ? "am" : "pm");
+        lv_label_set_text(m_update_label, buf);
         lv_obj_set_style_text_color(m_update_label, lv_color_white(), 0);
         lv_obj_set_style_bg_color(m_update_label, COLOR_STALE_BG, 0);
         lv_obj_set_style_bg_opa(m_update_label, LV_OPA_COVER, 0);
     } else {
+        lv_label_set_text(m_update_label, "");
         lv_obj_set_style_text_color(m_update_label, COLOR_MUTED, 0);
         lv_obj_set_style_bg_opa(m_update_label, LV_OPA_TRANSP, 0);
     }
@@ -228,6 +230,10 @@ void WeatherDisplay::showWaiting() {
     lv_label_set_text(m_temp_c_label, "--\xC2\xB0""C");
     lv_label_set_text(m_humidity_val_label, "--");
     lv_label_set_text(m_status_label, "Waiting for sensor...");
+}
+
+void WeatherDisplay::showStatus(const char * msg) {
+    lv_label_set_text(m_status_label, msg);
 }
 
 void WeatherDisplay::showRadioError(const char * msg) {
