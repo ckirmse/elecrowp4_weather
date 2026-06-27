@@ -178,8 +178,8 @@ static void run_task(void * arg) {
         Bme680Reading r;
         if (bme680.read(&r)) {
             float temp_f = r.temp_c * 9.0f / 5.0f + 32.0f;
-            lprintf(TAG, "BME680 | Temp: %.1f F / %.1f C  Humidity: %.1f%%  Gas: %.0f ohm",
-                temp_f, r.temp_c, r.humidity_pct, r.gas_resistance_ohm);
+            lprintf(TAG, "BME680 | Temp: %.1f F / %.1f C  Humidity: %.1f%%  Pressure: %.1f hPa  Gas: %.0f ohm",
+                temp_f, r.temp_c, r.humidity_pct, r.pressure_hpa, r.gas_resistance_ohm);
         }
     }
 

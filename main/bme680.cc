@@ -127,6 +127,7 @@ bool Bme680::read(Bme680Reading * out) {
 
     out->temp_c             = data.temperature;
     out->humidity_pct       = data.humidity;
+    out->pressure_hpa       = data.pressure / 100.0f;
     out->gas_resistance_ohm = data.gas_resistance;
     return true;
 }

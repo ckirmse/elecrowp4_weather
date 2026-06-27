@@ -6,6 +6,7 @@
 struct Bme680Reading {
     float temp_c;
     float humidity_pct;
+    float pressure_hpa;
     float gas_resistance_ohm;
 };
 
