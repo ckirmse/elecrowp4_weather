@@ -15,6 +15,9 @@ static constexpr gpio_num_t BME680_SDA_PIN   = GPIO_NUM_45;
 static constexpr gpio_num_t BME680_SCL_PIN   = GPIO_NUM_46;
 static constexpr uint8_t    BME680_I2C_ADDR  = 0x77;
 
+// Sensor runs warm; subtract 3.6°F (2.0°C) to correct readings.
+static constexpr float TEMP_CALIBRATION_OFFSET_C = 2.0f;
+
 static BME68X_INTF_RET_TYPE i2c_read_cb(uint8_t reg_addr, uint8_t * reg_data, uint32_t len, void * intf_ptr) {
     i2c_master_dev_handle_t dev = *(i2c_master_dev_handle_t *)intf_ptr;
     esp_err_t err = i2c_master_transmit_receive(dev, &reg_addr, 1, reg_data, len, 100);
@@ -144,7 +147,7 @@ bool Bme680::read(Bme680Reading * out) {
         return false;
     }
 
-    out->temp_c = data.temperature;
+    out->temp_c = data.temperature - TEMP_CALIBRATION_OFFSET_C;
     out->humidity_pct = data.humidity;
     out->pressure_hpa = data.pressure / 100.0f;
     out->gas_resistance_ohm = data.gas_resistance;

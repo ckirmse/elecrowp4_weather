@@ -7,4 +7,5 @@ using NtpStatusCb = void (*)(const char * msg);
 // Connects to the WiFi network configured via menuconfig, syncs the system
 // clock via SNTP (pool.ntp.org), then disconnects. Blocks until synced or
 // timed out. Clock is set to UTC; timezone conversion is in weather_display.
-void ntpSyncTime(NtpStatusCb cb = nullptr);
+// Returns true if the clock was successfully synced.
+bool ntpSyncTime(NtpStatusCb cb = nullptr);

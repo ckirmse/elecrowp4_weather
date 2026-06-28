@@ -58,7 +58,25 @@ static void on_event(void * arg, esp_event_base_t base, int32_t id, void * data)
     }
 }
 
-void ntpSyncTime(NtpStatusCb cb) {
+// Called once on first use; safe to call again (no-op after first).
+static void stack_init() {
+    static bool done = false;
+    if (done) {
+        return;
+    }
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+    done = true;
+}
+
+bool ntpSyncTime(NtpStatusCb cb) {
     s_status_cb = cb;
 
     if (strlen(CONFIG_WIFI_SSID) == 0) {
@@ -67,19 +85,10 @@ void ntpSyncTime(NtpStatusCb cb) {
             s_status_cb("No WiFi configured");
         }
         vTaskDelay(pdMS_TO_TICKS(10000));
-        return;
+        return false;
     }
 
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    stack_init();
 
     wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&init_cfg));
@@ -107,16 +116,18 @@ void ntpSyncTime(NtpStatusCb cb) {
         s_wifi_events, CONNECTED_BIT | FAILED_BIT,
         pdFALSE, pdFALSE, pdMS_TO_TICKS(15000));
 
+    bool synced = false;
+
     if (bits & FAILED_BIT) {
         eprintf(TAG, "WiFi connection failed after %d retries — time will not be set", MAX_RETRIES);
-        goto cleanup_wifi;
+        goto cleanup;
     }
     if (!(bits & CONNECTED_BIT)) {
         eprintf(TAG, "WiFi connection timed out (15s) — time will not be set");
         if (s_status_cb) {
             s_status_cb("WiFi timed out");
         }
-        goto cleanup_wifi;
+        goto cleanup;
     }
 
     {
@@ -138,6 +149,7 @@ void ntpSyncTime(NtpStatusCb cb) {
             if (s_status_cb) {
                 s_status_cb("Time synced");
             }
+            synced = true;
         } else {
             eprintf(TAG, "SNTP sync timed out");
             if (s_status_cb) {
@@ -148,7 +160,7 @@ void ntpSyncTime(NtpStatusCb cb) {
         esp_netif_sntp_deinit();
     }
 
-cleanup_wifi:
+cleanup:
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, h_wifi);
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, h_ip);
     esp_wifi_disconnect();
@@ -156,4 +168,5 @@ cleanup_wifi:
     esp_wifi_deinit();
     vEventGroupDelete(s_wifi_events);
     lprintf(TAG, "WiFi down");
+    return synced;
 }

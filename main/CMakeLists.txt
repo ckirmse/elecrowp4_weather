@@ -9,6 +9,8 @@ idf_component_register(
         weather_display.cc
         ntp_sync.cc
         lv_font_sourcesanspro_bold300.c
+        lv_font_sourcesanspro_bold72.c
+        lv_font_sourcesanspro_bold36.c
         lv_font_sourcesanspro_regular24.c
         lv_font_sourcesanspro_regular16.c
     INCLUDE_DIRS
