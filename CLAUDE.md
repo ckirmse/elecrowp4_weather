@@ -73,12 +73,13 @@ The sensor runs warm; `bme680.cc` subtracts a 2.0°C calibration offset from raw
 `app_main` creates `run_task` pinned to core 1, which performs all initialization in order:
 
 1. `Display::init()` — MIPI-DSI + LVGL
-2. `WeatherDisplay::init()` — builds two LVGL screens: a startup screen (loaded immediately) and the main weather screen (not yet visible)
-3. A 20 ms periodic `esp_timer` (`startup_lvgl_cb`) is started to drive `lv_tick_inc` + `lv_timer_handler` while `run_task` blocks
-4. `ntpSyncTime()` — WiFi connect → get IP → SNTP sync → WiFi down; fires a status callback at each stage
-5. The callback writes to `s_status_buf` / `s_status_dirty`; `startup_lvgl_cb` picks it up on the next tick and calls `WeatherDisplay::showStartupStatus()`. **LVGL is only ever touched from the timer task during this phase** — no mutex required.
-6. Timer stops; 800 ms pause so the final status is readable; `WeatherDisplay::showMainScreen()` loads the weather screen
-7. CC1101 and SignalCapture init; sensor tasks launched; 1-second clock timer started; UI loop begins
+2. `WeatherDisplay::init()` — builds the single main screen and loads it immediately
+3. Initial `lv_tick_inc` + `lv_timer_handler` call to render the blank screen
+4. CC1101 and SignalCapture init; if CC1101 is not detected, `showRadioError()` is called
+5. `radio_task`, `bme_task`, and (if SSID is set) `ntp_sync_task` are launched
+6. 1-second clock timer started; UI loop begins
+
+There is no longer a startup screen or a startup LVGL timer. NTP status messages are written to `s_status_buf` / `s_status_dirty` by `on_ntp_status()` (called from the NTP task); the UI loop checks `s_status_dirty` each iteration and forwards the message to `weather_display.showStatus()`.
 
 ### Task architecture
 
@@ -86,7 +87,7 @@ After startup, three sensor tasks run independently and communicate with the UI 
 
 - **`radio_task`** (priority 5) — drains `SignalCapture` queue, feeds edges to `AcuriteDecoder`; on a valid packet, updates `s_state.outdoor_*` under mutex and notifies the UI task.
 - **`bme_task`** (priority 2) — reads BME680 every 10 s; updates `s_state.indoor_*` under mutex and notifies the UI task.
-- **`ntp_sync_task`** (priority 1) — retries NTP every 60 s until the clock is synced, then re-syncs daily.
+- **`ntp_sync_task`** (priority 1) — syncs NTP immediately at startup, then retries every 60 s on failure or re-syncs daily on success. On sync, sets `s_state.ntp_synced = true` under mutex and notifies the UI task.
 - **UI task (`run_task`, core 1)** — blocks on `xTaskNotifyWait` (5 ms timeout). On notification (sensor update or 1-second clock tick), takes a snapshot of `WeatherState` under the mutex, calls `weather_display.render(snapshot)`, then `lv_timer_handler()`.
 
 ### UI loop cadence
@@ -95,6 +96,9 @@ After startup, three sensor tasks run independently and communicate with the UI 
 while (true) {
     xTaskNotifyWait(5 ms timeout);    // wake on sensor update or clock tick
     lv_tick_inc(elapsed_ms);          // advance LVGL clock
+    if (s_status_dirty) {
+        weather_display.showStatus(s_status_buf);  // NTP progress messages
+    }
     if (was_notified) {
         snapshot = s_state (under mutex);
         weather_display.render(snapshot);
@@ -112,8 +116,8 @@ while (true) {
    - **Adaptive thresholds**: during PREAMBLE, the decoder accumulates a running average of pulse widths. On transition to DATA, it sets `data_threshold_us = avg * 55%` to split short (bit-0) from long (bit-1) pulses. This makes the decoder robust to CC1101 AGC compression.
    - 7 bytes per packet; checksum = `sum(bytes[0..5]) & 0xFF == bytes[6]`.
 4. **Display** (`main/display.h/.cc`) — Initialises the MIPI-DSI bus, EK79007 panel, and LVGL 9 with two PSRAM-backed frame buffers in `LV_DISPLAY_RENDER_MODE_DIRECT`. Flush callback calls `esp_lcd_panel_draw_bitmap`.
-5. **WeatherDisplay** (`main/weather_display.h/.cc`) — LVGL UI. Two screens: startup (centered status label) and main (two-column layout). Right column: outdoor AcuRite temp/humidity. Left column: date, time, indoor BME680 temp, humidity, pressure, gas resistance. Status bar at bottom. Call `render(const WeatherState &)` to update. Timezone is hardcoded to `PST8PDT` in `WeatherDisplay::init()`.
-6. **WeatherState** (`main/weather_state.h`) — Plain struct holding all sensor readings. `outdoor_*` fields are populated by `radio_task`; `indoor_*` fields by `bme_task`. Each section has a `*_valid` flag. Shared across tasks under `s_state_mutex`.
+5. **WeatherDisplay** (`main/weather_display.h/.cc`) — LVGL UI. Single main screen (two-column layout): right column = outdoor AcuRite temp/humidity; left column = date, time, indoor BME680 temp, humidity, pressure, gas resistance; status bar at bottom. Public API: `render(const WeatherState &)`, `showStatus(const char *)`, `showRadioError(const char *)`. Timezone is hardcoded to `PST8PDT` in `WeatherDisplay::init()`.
+6. **WeatherState** (`main/weather_state.h`) — Plain struct holding all sensor readings. `ntp_synced` bool; `outdoor_*` fields (`outdoor_captured_us` is monotonic `esp_timer_get_time()` at capture, not wall clock); `indoor_*` fields. Each sensor section has a `*_valid` flag. Shared across tasks under `s_state_mutex`.
 
 ### IDF 6.0 component notes
 
@@ -128,12 +132,19 @@ In IDF 6.0 vs 5.x, two components were absorbed into larger ones:
 | File | Purpose |
 |------|---------|
 | `sdkconfig.defaults` | ESP32-P4 Kconfig defaults — PSRAM, LVGL, WiFi via C6/SDIO companion |
+| `partitions.csv` | Custom partition table (2 MB factory app partition) |
 | `main/Kconfig.projbuild` | Adds "Weather Station NTP" menu (WiFi SSID/password) |
-| `main/idf_component.yml` | Managed components: `esp_lcd_ek79007`, `lvgl 9.5`, `esp_hosted`, `esp_wifi_remote` |
+| `main/idf_component.yml` | Managed components: `esp_lcd_ek79007`, `lvgl 9.5`, `esp_hosted`, `esp_wifi_remote`, `bme68x` |
 | `main/cc1101.h` | **CC1101 pin definitions** — update these when rewiring |
+| `main/bme680.h/.cc` | BME680 I2C driver; **pin and I2C address defined at top of `bme680.cc`**; applies 2°C temp offset |
+| `main/weather_state.h` | Shared `WeatherState` struct — outdoor (AcuRite) and indoor (BME680) readings |
 | `main/acurite.cc` | AcuRite 592TXR OOK-PWM decoder; checksum, packet layout, adaptive thresholds |
 | `main/ntp_sync.cc` | WiFi connect + SNTP sync; calls `NtpStatusCb` at each stage |
-| `main/lv_font_sourcesansprobold80.c` | Large digit font, copied from `~/cic/src/core/lvglfonts/` |
+| `main/lv_font_sourcesanspro_bold36.c` | 36pt bold Source Sans Pro font |
+| `main/lv_font_sourcesanspro_bold72.c` | 72pt bold Source Sans Pro font |
+| `main/lv_font_sourcesanspro_bold300.c` | 300pt bold Source Sans Pro font (large outdoor temp display) |
+| `main/lv_font_sourcesanspro_regular16.c` | 16pt regular Source Sans Pro font |
+| `main/lv_font_sourcesanspro_regular24.c` | 24pt regular Source Sans Pro font |
 
 ## Coding Standards
 
