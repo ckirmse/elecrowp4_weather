@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an ESP32-P4 weather station that receives AcuRite 433 MHz sensor data (temperature and humidity) via a CC1101 OOK radio, logs readings to the serial console, and displays them in large numbers on a 1024×600 MIPI-DSI display using LVGL. It runs on the Elecrow CrowPanel Advanced 7" P4 board.
+This is an ESP32-P4 weather station that displays outdoor conditions (temperature and humidity from an AcuRite 433 MHz sensor via a CC1101 OOK radio) and indoor conditions (temperature, humidity, pressure, and air quality from a BME680 I2C sensor) on a 1024×600 MIPI-DSI display using LVGL. It runs on the Elecrow CrowPanel Advanced 7" P4 board.
 
 ## Build Commands
 
@@ -45,16 +45,26 @@ Leave SSID empty to skip NTP sync entirely. Credentials are stored in `build/sdk
 
 | CC1101 pin | Board pin | GPIO |
 |------------|-----------|------|
-| SCK        | IO2       | 2    |
+| SCK        | IO5       | 5    |
 | MOSI (SI)  | IO3       | 3    |
 | MISO (SO)  | IO4       | 4    |
-| CSN        | IO5       | 5    |
+| CSN        | IO2       | 2    |
 | GDO0       | IO25      | 25   |
 | GDO2       | NC        | —    |
 | VCC        | 3.3V      | —    |
 | GND        | GND       | —    |
 
 Note: many cheap CC1101 modules are clones that return `0x0F` from the VERSION register instead of the genuine TI value `0x14`. They work fine for OOK receive.
+
+**BME680 wiring** (pins defined at the top of `main/bme680.cc`):
+
+| BME680 pin | GPIO |
+|------------|------|
+| SDA        | 45   |
+| SCL        | 46   |
+| I2C addr   | 0x77 |
+
+The sensor runs warm; `bme680.cc` subtracts a 2.0°C calibration offset from raw temperature readings.
 
 ## Architecture
 
@@ -68,18 +78,28 @@ Note: many cheap CC1101 modules are clones that return `0x0F` from the VERSION r
 4. `ntpSyncTime()` — WiFi connect → get IP → SNTP sync → WiFi down; fires a status callback at each stage
 5. The callback writes to `s_status_buf` / `s_status_dirty`; `startup_lvgl_cb` picks it up on the next tick and calls `WeatherDisplay::showStartupStatus()`. **LVGL is only ever touched from the timer task during this phase** — no mutex required.
 6. Timer stops; 800 ms pause so the final status is readable; `WeatherDisplay::showMainScreen()` loads the weather screen
-7. CC1101 and SignalCapture init, then the main loop runs
+7. CC1101 and SignalCapture init; sensor tasks launched; 1-second clock timer started; UI loop begins
 
-### Main loop cadence (core 1, 5 ms tick)
+### Task architecture
+
+After startup, three sensor tasks run independently and communicate with the UI task via a mutex-protected `WeatherState` struct and `xTaskNotify`:
+
+- **`radio_task`** (priority 5) — drains `SignalCapture` queue, feeds edges to `AcuriteDecoder`; on a valid packet, updates `s_state.outdoor_*` under mutex and notifies the UI task.
+- **`bme_task`** (priority 2) — reads BME680 every 10 s; updates `s_state.indoor_*` under mutex and notifies the UI task.
+- **`ntp_sync_task`** (priority 1) — retries NTP every 60 s until the clock is synced, then re-syncs daily.
+- **UI task (`run_task`, core 1)** — blocks on `xTaskNotifyWait` (5 ms timeout). On notification (sensor update or 1-second clock tick), takes a snapshot of `WeatherState` under the mutex, calls `weather_display.render(snapshot)`, then `lv_timer_handler()`.
+
+### UI loop cadence
 
 ```
 while (true) {
-    lv_tick_inc(elapsed_ms);         // advance LVGL clock
-    drain SignalCapture queue        // feed edges to AcuriteDecoder
-        → on valid packet: lprintf + weather_display.update()
-    once/second: log pulse stats     // edges/s, total, packets, last_edge age
-    lv_timer_handler();              // drive LVGL rendering
-    vTaskDelay(5 ms);
+    xTaskNotifyWait(5 ms timeout);    // wake on sensor update or clock tick
+    lv_tick_inc(elapsed_ms);          // advance LVGL clock
+    if (was_notified) {
+        snapshot = s_state (under mutex);
+        weather_display.render(snapshot);
+    }
+    lv_timer_handler();               // drive LVGL rendering
 }
 ```
 
@@ -92,7 +112,8 @@ while (true) {
    - **Adaptive thresholds**: during PREAMBLE, the decoder accumulates a running average of pulse widths. On transition to DATA, it sets `data_threshold_us = avg * 55%` to split short (bit-0) from long (bit-1) pulses. This makes the decoder robust to CC1101 AGC compression.
    - 7 bytes per packet; checksum = `sum(bytes[0..5]) & 0xFF == bytes[6]`.
 4. **Display** (`main/display.h/.cc`) — Initialises the MIPI-DSI bus, EK79007 panel, and LVGL 9 with two PSRAM-backed frame buffers in `LV_DISPLAY_RENDER_MODE_DIRECT`. Flush callback calls `esp_lcd_panel_draw_bitmap`.
-5. **WeatherDisplay** (`main/weather_display.h/.cc`) — LVGL UI. Two screens: startup (centered status label) and main (temperature + humidity panels). Timezone is hardcoded to `PST8PDT` in `WeatherDisplay::init()`.
+5. **WeatherDisplay** (`main/weather_display.h/.cc`) — LVGL UI. Two screens: startup (centered status label) and main (two-column layout). Right column: outdoor AcuRite temp/humidity. Left column: date, time, indoor BME680 temp, humidity, pressure, gas resistance. Status bar at bottom. Call `render(const WeatherState &)` to update. Timezone is hardcoded to `PST8PDT` in `WeatherDisplay::init()`.
+6. **WeatherState** (`main/weather_state.h`) — Plain struct holding all sensor readings. `outdoor_*` fields are populated by `radio_task`; `indoor_*` fields by `bme_task`. Each section has a `*_valid` flag. Shared across tasks under `s_state_mutex`.
 
 ### IDF 6.0 component notes
 

@@ -1,10 +1,14 @@
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <stdlib.h>
 
 #include "weather_display.h"
 #include "log_util.h"
+
+// Uncomment to force a worst-case date for testing the adaptive abbreviation.
+// #define FORCE_TEST_DATE
 
 static const char * TAG = "WeatherDisplay";
 
@@ -352,6 +356,32 @@ void WeatherDisplay::showRadioError(const char * msg) {
     lv_label_set_text(m_status_label, msg);
 }
 
+static constexpr int DATE_MAX_W = LEFT_W - 24;
+
+static void build_date_string(char * buf, size_t bufsz,
+                              const lv_font_t * font, const struct tm * t) {
+    int hour = t->tm_hour % 12;
+    if (hour == 0) { hour = 12; }
+    const char * ampm = t->tm_hour < 12 ? "am" : "pm";
+
+    static const char * const day_fmts[] = { "%A", "%A", "%a" };
+    static const char * const mon_fmts[] = { "%B", "%b", "%b" };
+
+    for (int i = 0; i < 3; i++) {
+        char date_part[32];
+        char fmt[16];
+        snprintf(fmt, sizeof(fmt), "%s, %s", day_fmts[i], mon_fmts[i]);
+        strftime(date_part, sizeof(date_part), fmt, t);
+        snprintf(buf, bufsz, "%s %d \xC2\xB7 %d:%02d %s",
+                 date_part, t->tm_mday, hour, t->tm_min, ampm);
+        lv_point_t sz;
+        lv_text_get_size(&sz, buf, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        if (sz.x <= DATE_MAX_W || i == 2) {
+            break;
+        }
+    }
+}
+
 void WeatherDisplay::render(const WeatherState & state) {
     char buf[64];
 
@@ -407,17 +437,18 @@ void WeatherDisplay::render(const WeatherState & state) {
     // Date and time (combined)
     time_t now = time(nullptr);
     struct tm tm_local;
+#ifdef FORCE_TEST_DATE
+    memset(&tm_local, 0, sizeof(tm_local));
+    tm_local.tm_year = 125;  // 2025
+    tm_local.tm_mon  = 11;   // December
+    tm_local.tm_mday = 31;
+    tm_local.tm_hour = 12;
+    tm_local.tm_min  = 59;
+    tm_local.tm_wday = 3;    // Wednesday (Dec 31 2025 is a Wednesday)
+#else
     localtime_r(&now, &tm_local);
-
-    int hour = tm_local.tm_hour % 12;
-    if (hour == 0) {
-        hour = 12;
-    }
-    char date_buf[32];
-    strftime(date_buf, sizeof(date_buf), "%A, %B", &tm_local);
-    snprintf(buf, sizeof(buf), "%s %d \xC2\xB7 %d:%02d %s",
-        date_buf, tm_local.tm_mday, hour, tm_local.tm_min,
-        tm_local.tm_hour < 12 ? "am" : "pm");
+#endif
+    build_date_string(buf, sizeof(buf), &lv_font_sourcesanspro_bold36, &tm_local);
     lv_label_set_text(m_date_label, buf);
 
     checkStaleness(state);
