@@ -17,23 +17,34 @@ static constexpr gpio_num_t LCD_BK_POWER_PIN = GPIO_NUM_29;
 static constexpr gpio_num_t LCD_BK_PWM_PIN = GPIO_NUM_31;
 static constexpr uint32_t LCD_BK_PWM_FREQ_HZ = 30000;
 
-// EK79007 1024x600 @60Hz timings (matches CIC initDeviceConfigElecrowP4).
+// EK79007 1024x600 @60Hz timings — from Elecrow reference bsp_illuminate.c.
 static constexpr int HSYNC_BACK_PORCH = 160;
 static constexpr int HSYNC_FRONT_PORCH = 160;
-static constexpr int HSYNC_PULSE_WIDTH = 10;
+static constexpr int HSYNC_PULSE_WIDTH = 70;
 static constexpr int VSYNC_BACK_PORCH = 23;
 static constexpr int VSYNC_FRONT_PORCH = 12;
-static constexpr int VSYNC_PULSE_WIDTH = 1;
+static constexpr int VSYNC_PULSE_WIDTH = 10;
 
 static const char * TAG = "Display";
 
 static Display * g_display = nullptr;
 
+// Called by the DPI panel driver after the new frame buffer has been latched by
+// the display controller — only then is it safe for LVGL to render the next frame.
+static bool dpi_trans_done_cb(esp_lcd_panel_handle_t,
+                               esp_lcd_dpi_panel_event_data_t *,
+                               void * user_ctx) {
+    lv_display_flush_ready(static_cast<lv_display_t *>(user_ctx));
+    return false;
+}
+
 static void lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map) {
     if (lv_display_flush_is_last(disp)) {
         g_display->renderFrame(px_map);
+        // flush_ready deferred to dpi_trans_done_cb — don't call it here
+    } else {
+        lv_display_flush_ready(disp);
     }
-    lv_display_flush_ready(disp);
 }
 
 Display::Display():
@@ -51,12 +62,19 @@ void Display::init() {
 }
 
 void Display::initDsi() {
-    lprintf(TAG, "Enabling DSI PHY LDO");
-    esp_ldo_channel_handle_t ldo_phy_chan = nullptr;
-    esp_ldo_channel_config_t ldo_cfg = {};
-    ldo_cfg.chan_id = 3;
-    ldo_cfg.voltage_mv = 2500;
-    ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_cfg, &ldo_phy_chan));
+    lprintf(TAG, "Enabling DSI PHY LDOs");
+    esp_ldo_channel_handle_t ldo3_chan = nullptr;
+    esp_ldo_channel_config_t ldo3_cfg = {};
+    ldo3_cfg.chan_id = 3;
+    ldo3_cfg.voltage_mv = 2500;
+    ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo3_cfg, &ldo3_chan));
+
+    // LDO4 (3300mV) powers the panel's 3.3V rail — required per Elecrow reference.
+    esp_ldo_channel_handle_t ldo4_chan = nullptr;
+    esp_ldo_channel_config_t ldo4_cfg = {};
+    ldo4_cfg.chan_id = 4;
+    ldo4_cfg.voltage_mv = 3300;
+    ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo4_cfg, &ldo4_chan));
 
     lprintf(TAG, "Creating DSI bus");
     esp_lcd_dsi_bus_config_t dsi_bus_cfg;
@@ -81,7 +99,7 @@ void Display::initDsi() {
     memset(&dpi_cfg, 0, sizeof(dpi_cfg));
     dpi_cfg.virtual_channel = 0;
     dpi_cfg.dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT;
-    dpi_cfg.dpi_clock_freq_mhz = 52;
+    dpi_cfg.dpi_clock_freq_mhz = 51;
     dpi_cfg.in_color_format = LCD_COLOR_FMT_RGB565;
     dpi_cfg.out_color_format = LCD_COLOR_FMT_RGB565;
     dpi_cfg.num_fbs = 2;
@@ -149,6 +167,11 @@ void Display::initLvgl() {
     lv_display_set_buffers(m_lv_display, m_fb[0], m_fb[1], fb_bytes,
         LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(m_lv_display, lvgl_flush_cb);
+
+    // Defer flush_ready until the hardware has finished the buffer swap.
+    esp_lcd_dpi_panel_event_callbacks_t dpi_cbs = {};
+    dpi_cbs.on_color_trans_done = dpi_trans_done_cb;
+    ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(m_lcd, &dpi_cbs, m_lv_display));
 
     lprintf(TAG, "LVGL initialized");
 }

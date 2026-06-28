@@ -4,6 +4,8 @@
 #include <time.h>
 
 struct WeatherState {
+    bool ntp_synced = false;
+
     // Outdoor (AcuRite) — valid when outdoor_valid == true
     bool outdoor_valid = false;
     float outdoor_temp_f = 0;
@@ -13,7 +15,7 @@ struct WeatherState {
     char outdoor_channel = 0;
     bool outdoor_battery_ok = false;
     int outdoor_rssi_dbm = 0;
-    time_t outdoor_updated_at = 0;
+    int64_t outdoor_captured_us = 0;  // esp_timer_get_time() at capture; use monotonic age, not wall clock
 
     // Indoor (BME680) — valid when indoor_valid == true
     bool indoor_valid = false;

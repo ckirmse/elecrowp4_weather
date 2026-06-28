@@ -13,14 +13,10 @@ public:
 
     void init(Display & display);
     void render(const WeatherState & state);
-    void showStartupStatus(const char * msg);
-    void showMainScreen();
     void showStatus(const char * msg);
     void showRadioError(const char * msg);
 
 private:
-    lv_obj_t * m_startup_screen;
-    lv_obj_t * m_startup_label;
     lv_obj_t * m_screen;
 
     // Right column: outdoor temperature and humidity

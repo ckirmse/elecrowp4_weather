@@ -60,25 +60,16 @@ static SignalCapture s_capture;
 static AcuriteDecoder s_decoder;
 static Bme680 s_bme;
 
-// ─── Startup LVGL timer (drives rendering while NTP blocks run_task) ──────────
+// ─── NTP status callback: called from the ESP event-loop task ────────────────
+// Writes into s_status_buf and sets s_status_dirty; the UI loop applies it.
 
 static char s_status_buf[64];
 static volatile bool s_status_dirty;
-static WeatherDisplay * s_weather_display_ptr;
 
 static void on_ntp_status(const char * msg) {
     strncpy(s_status_buf, msg, sizeof(s_status_buf) - 1);
     s_status_buf[sizeof(s_status_buf) - 1] = '\0';
     s_status_dirty = true;
-}
-
-static void startup_lvgl_cb(void *) {
-    lv_tick_inc(20);
-    if (s_status_dirty && s_weather_display_ptr) {
-        s_weather_display_ptr->showStartupStatus(s_status_buf);
-        s_status_dirty = false;
-    }
-    lv_timer_handler();
 }
 
 // ─── Clock timer: notifies UI task every second ───────────────────────────────
@@ -113,7 +104,7 @@ static void radio_task(void *) {
                 s_state.outdoor_channel = reading.channel;
                 s_state.outdoor_battery_ok = reading.battery_ok;
                 s_state.outdoor_rssi_dbm = rssi_dbm;
-                s_state.outdoor_updated_at = time(nullptr);
+                s_state.outdoor_captured_us = esp_timer_get_time();
                 xSemaphoreGive(s_state_mutex);
 
                 xTaskNotify(s_ui_task_handle, 0, eNoAction);
@@ -158,15 +149,19 @@ static void bme_task(void *) {
 
 // ─── NTP retry task: retries once per minute until the clock is synced ───────
 
-static void ntp_sync_task(void * arg) {
-    bool synced = (bool)(uintptr_t)arg;
+static void ntp_sync_task(void * /* arg */) {
+    bool synced = false;
     while (true) {
+        lprintf(TAG, "%s NTP sync", synced ? "Daily" : "Initial/retry");
+        synced = ntpSyncTime(on_ntp_status);
+        if (synced) {
+            xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+            s_state.ntp_synced = true;
+            xSemaphoreGive(s_state_mutex);
+            xTaskNotify(s_ui_task_handle, 0, eNoAction);
+        }
         uint32_t delay_ms = synced ? 24u * 60u * 60u * 1000u : 60u * 1000u;
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
-        lprintf(TAG, "%s NTP sync", synced ? "Daily" : "Retry");
-        if (ntpSyncTime()) {
-            synced = true;
-        }
     }
 }
 
@@ -182,26 +177,8 @@ static void run_task(void * arg) {
     WeatherDisplay weather_display;
     weather_display.init(display);
 
-    // Drive LVGL via periodic timer while ntpSyncTime blocks this task.
-    s_weather_display_ptr = &weather_display;
+    // Initial render with all "--" values before tasks start.
     s_status_dirty = false;
-    esp_timer_handle_t startup_timer;
-    esp_timer_create_args_t timer_args = {};
-    timer_args.callback = startup_lvgl_cb;
-    timer_args.name = "lvgl_startup";
-    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &startup_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(startup_timer, 20'000));
-
-    bool ntp_ok = ntpSyncTime(on_ntp_status);
-
-    ESP_ERROR_CHECK(esp_timer_stop(startup_timer));
-    ESP_ERROR_CHECK(esp_timer_delete(startup_timer));
-    s_weather_display_ptr = nullptr;
-
-    vTaskDelay(pdMS_TO_TICKS(800));
-
-    weather_display.showMainScreen();
-    weather_display.render(s_state);  // shows "--" everywhere (state is empty)
     lv_tick_inc(50);
     lv_timer_handler();
 
@@ -214,15 +191,13 @@ static void run_task(void * arg) {
 
     if (!s_radio.isDetected()) {
         weather_display.showRadioError("CC1101 SPI error - check wiring");
-        lv_tick_inc(50);
-        lv_timer_handler();
     }
 
     // Start sensor tasks.
     xTaskCreate(radio_task, "Radio", 2 * 8192, nullptr, 5, nullptr);
     xTaskCreate(bme_task, "BME", 2 * 8192, nullptr, 2, nullptr);
     if (strlen(CONFIG_WIFI_SSID) > 0) {
-        xTaskCreate(ntp_sync_task, "NtpSync", 4 * 8192, (void *)(uintptr_t)ntp_ok, 1, nullptr);
+        xTaskCreate(ntp_sync_task, "NtpSync", 4 * 8192, nullptr, 1, nullptr);
     }
 
     // 1-second clock timer.
@@ -246,6 +221,11 @@ static void run_task(void * arg) {
         if (elapsed_ms > 0) {
             lv_tick_inc(elapsed_ms);
             last_tick_us = now;
+        }
+
+        if (s_status_dirty) {
+            s_status_dirty = false;
+            weather_display.showStatus(s_status_buf);
         }
 
         if (was_notified) {

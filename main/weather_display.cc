@@ -4,6 +4,8 @@
 #include <time.h>
 #include <stdlib.h>
 
+#include "esp_timer.h"
+
 #include "weather_display.h"
 #include "log_util.h"
 
@@ -79,8 +81,6 @@ static constexpr int OUTDOOR_HUM_H = RIGHT_PANEL_H;
 static constexpr int OUTDOOR_TEMP_H = 4 * RIGHT_PANEL_H + 3 * RIGHT_GAP;
 
 WeatherDisplay::WeatherDisplay():
-    m_startup_screen(nullptr),
-    m_startup_label(nullptr),
     m_screen(nullptr),
     m_outdoor_temp_int_label(nullptr),
     m_outdoor_temp_unit_label(nullptr),
@@ -102,7 +102,7 @@ static lv_obj_t * make_panel(lv_obj_t * parent, int x, int y, int w, int h) {
     lv_obj_set_size(panel, w, h);
     lv_obj_set_style_bg_color(panel, COLOR_PANEL, 0);
     lv_obj_set_style_border_color(panel, COLOR_ACCENT, 0);
-    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_border_width(panel, 4, 0);
     lv_obj_set_style_radius(panel, 12, 0);
     lv_obj_set_style_pad_all(panel, 0, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
@@ -158,17 +158,6 @@ void WeatherDisplay::init(Display & display) {
     lv_style_init(&m_style_small);
     lv_style_set_text_font(&m_style_small, &lv_font_sourcesanspro_regular16);
     lv_style_set_text_color(&m_style_small, COLOR_MUTED);
-
-    // ── Startup screen ──────────────────────────────────────────────────────────
-    m_startup_screen = lv_obj_create(NULL);
-    lv_obj_add_style(m_startup_screen, &m_style_dark_bg, 0);
-
-    m_startup_label = lv_label_create(m_startup_screen);
-    lv_label_set_text(m_startup_label, "Starting up...");
-    lv_obj_add_style(m_startup_label, &m_style_medium, 0);
-    lv_obj_align(m_startup_label, LV_ALIGN_CENTER, 0, 0);
-
-    lv_scr_load(m_startup_screen);
 
     // ── Main weather screen ─────────────────────────────────────────────────────
     m_screen = lv_obj_create(NULL);
@@ -334,15 +323,8 @@ void WeatherDisplay::init(Display & display) {
     lv_obj_set_style_radius(m_stale_label, 4, 0);
     lv_obj_align(m_stale_label, LV_ALIGN_BOTTOM_RIGHT, -16, -8);
 
-    lprintf(TAG, "Weather UI ready");
-}
-
-void WeatherDisplay::showStartupStatus(const char * msg) {
-    lv_label_set_text(m_startup_label, msg);
-}
-
-void WeatherDisplay::showMainScreen() {
     lv_scr_load(m_screen);
+    lprintf(TAG, "Weather UI ready");
 }
 
 void WeatherDisplay::showStatus(const char * msg) {
@@ -435,21 +417,25 @@ void WeatherDisplay::render(const WeatherState & state) {
     }
 
     // Date and time (combined)
-    time_t now = time(nullptr);
-    struct tm tm_local;
+    if (!state.ntp_synced) {
+        lv_label_set_text(m_date_label, "--");
+    } else {
+        time_t now = time(nullptr);
+        struct tm tm_local;
 #ifdef FORCE_TEST_DATE
-    memset(&tm_local, 0, sizeof(tm_local));
-    tm_local.tm_year = 125;  // 2025
-    tm_local.tm_mon  = 11;   // December
-    tm_local.tm_mday = 31;
-    tm_local.tm_hour = 12;
-    tm_local.tm_min  = 59;
-    tm_local.tm_wday = 3;    // Wednesday (Dec 31 2025 is a Wednesday)
+        memset(&tm_local, 0, sizeof(tm_local));
+        tm_local.tm_year = 125;  // 2025
+        tm_local.tm_mon  = 11;   // December
+        tm_local.tm_mday = 31;
+        tm_local.tm_hour = 12;
+        tm_local.tm_min  = 59;
+        tm_local.tm_wday = 3;    // Wednesday (Dec 31 2025 is a Wednesday)
 #else
-    localtime_r(&now, &tm_local);
+        localtime_r(&now, &tm_local);
 #endif
-    build_date_string(buf, sizeof(buf), &lv_font_sourcesanspro_bold36, &tm_local);
-    lv_label_set_text(m_date_label, buf);
+        build_date_string(buf, sizeof(buf), &lv_font_sourcesanspro_bold36, &tm_local);
+        lv_label_set_text(m_date_label, buf);
+    }
 
     checkStaleness(state);
 }
@@ -458,22 +444,28 @@ void WeatherDisplay::checkStaleness(const WeatherState & state) {
     if (!state.outdoor_valid) {
         return;
     }
-    bool stale = (time(nullptr) - state.outdoor_updated_at) > STALE_THRESHOLD_SEC;
+    int64_t age_sec = (esp_timer_get_time() - state.outdoor_captured_us) / 1'000'000LL;
+    bool stale = age_sec > STALE_THRESHOLD_SEC;
     if (stale == m_is_stale) {
         return;
     }
     m_is_stale = stale;
     if (stale) {
-        struct tm tm_local;
-        localtime_r(&state.outdoor_updated_at, &tm_local);
-        int hour = tm_local.tm_hour % 12;
-        if (hour == 0) {
-            hour = 12;
+        if (state.ntp_synced) {
+            time_t reading_wall_time = time(nullptr) - (time_t)age_sec;
+            struct tm tm_local;
+            localtime_r(&reading_wall_time, &tm_local);
+            int hour = tm_local.tm_hour % 12;
+            if (hour == 0) {
+                hour = 12;
+            }
+            char buf[32];
+            snprintf(buf, sizeof(buf), "as of %d:%02d%s",
+                hour, tm_local.tm_min, tm_local.tm_hour < 12 ? "am" : "pm");
+            lv_label_set_text(m_stale_label, buf);
+        } else {
+            lv_label_set_text(m_stale_label, "stale");
         }
-        char buf[32];
-        snprintf(buf, sizeof(buf), "as of %d:%02d%s",
-            hour, tm_local.tm_min, tm_local.tm_hour < 12 ? "am" : "pm");
-        lv_label_set_text(m_stale_label, buf);
         lv_obj_set_style_text_color(m_stale_label, lv_color_white(), 0);
         lv_obj_set_style_bg_color(m_stale_label, COLOR_STALE_BG, 0);
         lv_obj_set_style_bg_opa(m_stale_label, LV_OPA_COVER, 0);
